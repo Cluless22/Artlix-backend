@@ -1,6 +1,6 @@
-import secrets
 from aiogram import Router, F
-from aiogram.types import Message, ChatType
+from aiogram.types import Message
+
 
 from app.domain.repositories import create_company, get_company_by_owner
 
@@ -13,7 +13,7 @@ def _generate_office_code() -> str:
 
 @router.message(
     F.text == "/setup",
-    F.chat.type.in_({ChatType.GROUP, ChatType.SUPERGROUP})
+    F.chat.type.in_(("group", "supergroup"))
 )
 async def cmd_setup(message: Message):
     owner_id = message.from_user.id
