@@ -1,24 +1,24 @@
-from fastapi import APIRouter, Request, Header, HTTPException
+from fastapi import APIRouter, HTTPException
 from aiogram.types import Update
 
-from app.core.config import get_settings
 from app.telegram.bot import bot, dp
 
 router = APIRouter()
-settings = get_settings()
 
 
 @router.post("/telegram/webhook")
-async def telegram_webhook(
-    request: Request,
-    x_telegram_bot_api_secret_token: str | None = Header(default=None),
-):
-    expected = settings.TELEGRAM_WEBHOOK_SECRET_TOKEN
-    if expected and x_telegram_bot_api_secret_token != expected:
-        raise HTTPException(status_code=403, detail="Invalid secret token")
+async def telegram_webhook(update: dict):
+    """
+    Telegram sends all updates here as JSON.
+    We turn it into an aiogram Update and feed it to the dispatcher.
+    """
+    try:
+        tg_update = Update.model_validate(update)  # pydantic v2 style
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid Telegram update")
 
-    data = await request.json()
-    update = Update.model_validate(data)
+    # Let aiogram process handlers: /start, etc.
+    await dp.feed_update(bot, tg_update)
 
-    await dp.feed_update(bot=bot, update=update)
+    # Telegram doesn't need any message back, just 200 OK/json
     return {"ok": True}
