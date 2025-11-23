@@ -8,7 +8,7 @@ from app.domain.repositories import (
 )
 from app.domain.decision_engine import classify_message, Intent
 from app.domain.workflows.job_intake import handle_job_intake
-from app.telegram.bot import bot
+
 
 router = Router()
 
