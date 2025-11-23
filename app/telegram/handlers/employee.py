@@ -1,68 +1,59 @@
 from aiogram import Router, F
 from aiogram.types import Message
-
-from app.domain.repositories import (
-    get_company_by_office_code,
-    create_employee,
-    get_employee_by_telegram_id,
-)
-from app.domain.decision_engine import classify_message, Intent
-from app.domain.workflows.job_intake import handle_job_intake
-
+from aiogram.enums import ChatType
 
 router = Router()
 
 
-@router.message(F.text.startswith("/join"))
-async def cmd_join(message: Message):
-    parts = message.text.split()
-    if len(parts) < 2:
-        await message.answer("Usage: /join <office_code>\nAsk your boss for the code.")
+def _looks_like_company_code(text: str) -> bool:
+    """
+    Very simple heuristic: our fake company codes look like 'CO-12345'.
+    Adjust this later when we have real DB-backed codes.
+    """
+    text = text.strip()
+    if not text.startswith("CO-"):
+        return False
+    rest = text[3:]
+    return rest.isdigit() and 3 <= len(rest) <= 8
+
+
+@router.message(F.chat.type == ChatType.PRIVATE)
+async def handle_employee_private(message: Message) -> None:
+    """
+    Handle messages from employees in private chat.
+
+    For now:
+    - If they send something that looks like a company code -> 'link' them.
+    - Otherwise, acknowledge the message as a job / update placeholder.
+    """
+
+    text = (message.text or "").strip()
+
+    # Case 1: Looks like a company invite code
+    if _looks_like_company_code(text):
+        await message.answer(
+            "✅ <b>Company code accepted.</b>\n\n"
+            "Your chat is now linked to your company (demo mode).\n\n"
+            "From now on, you can:\n"
+            "• Send job requests (address, time, scope)\n"
+            "• Send updates ('job finished', 'delay', etc.)\n\n"
+            "Later I’ll automatically:\n"
+            "• Update tracking sheets\n"
+            "• Ping your owner with summaries\n"
+            "• Create calendar events. 📅"
+        )
+        # In the real version we will:
+        # - Look up the company by code in MongoDB
+        # - Create/attach an employee record
+        # - Store the employee's chat_id for notifications
         return
 
-    office_code = parts[1].strip()
-    company = await get_company_by_office_code(office_code)
-    if not company:
-        await message.answer("❌ That office code is invalid. Double-check with your boss.")
-        return
-
-    existing = await get_employee_by_telegram_id(message.from_user.id)
-    if existing:
-        await message.answer("You're already linked to a company. You're good to go 🚀")
-        return
-
-    await create_employee(
-        telegram_id=message.from_user.id,
-        company_id=company.id,
-        username=message.from_user.username,
-        first_name=message.from_user.first_name,
-        last_name=message.from_user.last_name,
-    )
-
+    # Case 2: Any other text in private from employee -> treat as job/update message
     await message.answer(
-        f"✅ You're now linked to <b>{company.title}</b>.\n"
-        "Just describe jobs in natural language (e.g. “New job: kitchen reno for John…”) "
-        "and I'll capture them + notify your boss."
+        "📝 Got it, I’ve recorded your message.\n\n"
+        "In the full version, this will:\n"
+        "• Create or update a job entry\n"
+        "• Notify your owner\n"
+        "• Keep everything in sync.\n\n"
+        "For now, you can also try sending your company code if you haven’t yet."
     )
-
-
-@router.message(F.chat.type == "private")
-async def employee_message(message: Message):
-    employee = await get_employee_by_telegram_id(message.from_user.id)
-
-    if not employee:
-        await message.answer(
-            "I don't know which company you're with yet.\n"
-            "Ask your boss for the office code and send: /join <office_code>"
-        )
-        return
-
-    intent = classify_message(message.text or "")
-
-    if intent == Intent.JOB_INTAKE:
-        await handle_job_intake(bot, message.from_user.id, message.text)
-    else:
-        await message.answer(
-            "Got it. Right now I'm best at capturing new jobs.\n"
-            "Try including words like 'new job', 'lead', 'estimate', or 'quote'."
-        )
