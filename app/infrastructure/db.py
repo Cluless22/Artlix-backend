@@ -1,31 +1,16 @@
-from typing import Optional
 from motor.motor_asyncio import AsyncIOMotorClient
-
 from app.core.config import get_settings
 
 _settings = get_settings()
-_client: Optional[AsyncIOMotorClient] = None
 
+# Connect to MongoDB using your connection string from settings
+client = AsyncIOMotorClient(_settings.MONGODB_URI)
 
-def get_mongo_client() -> AsyncIOMotorClient:
-    global _client
-    if _client is None:
-        _client = AsyncIOMotorClient(str(_settings.MONGODB_URI))
-    return _client
+# Use a simple DB name (MongoDB will create it if it doesn't exist)
+db_name = getattr(_settings, "MONGODB_DB_NAME", "artlix")
+db = client[db_name]
 
-
-def get_db():
-    client = get_mongo_client()
-    return client[_settings.MONGODB_DB_NAME]
-
-
-def companies_collection():
-    return get_db()["companies"]
-
-
-def employees_collection():
-    return get_db()["employees"]
-
-
-def jobs_collection():
-    return get_db()["jobs"]
+# Collections (tables)
+companies_collection = db["companies"]   # owners / companies
+employees_collection = db["employees"]   # employees linked to a company
+jobs_collection = db["jobs"]             # jobs created by employees
