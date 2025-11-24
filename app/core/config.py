@@ -1,22 +1,24 @@
 from functools import lru_cache
-from pydantic import AnyUrl
+
+from pydantic import Field
 from pydantic_settings import BaseSettings
 
 
-
 class Settings(BaseSettings):
-    ENV: str = "dev"
-
+    # 🔹 Telegram bot token (from Render env var)
     TELEGRAM_BOT_TOKEN: str
-    TELEGRAM_WEBHOOK_SECRET_TOKEN: str = "supersecret"
 
-    MONGODB_URI: AnyUrl = "mongodb://localhost:27017"
+    # 🔹 MongoDB connection string (we keep this as a plain string)
+    MONGODB_URI: str
+
+    # 🔹 Database name inside your cluster
     MONGODB_DB_NAME: str = "artlix"
 
-    N8N_BASE_URL: AnyUrl = "http://localhost:5678"
-    N8N_WEBHOOK_SECRET: str = "changeme"
+    # 🔹 Public URL of your backend on Render, e.g. "https://artlix.onrender.com"
+    WEBHOOK_BASE_URL: str
 
-    PUBLIC_BASE_URL: str = "https://example.com"
+    # 🔹 Optional: secret token for Telegram webhook security
+    WEBHOOK_SECRET_TOKEN: str | None = None
 
     class Config:
         env_file = ".env"
