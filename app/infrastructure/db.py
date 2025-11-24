@@ -1,16 +1,17 @@
 from motor.motor_asyncio import AsyncIOMotorClient
+
 from app.core.config import get_settings
 
+# ⚙️ Load settings (including MongoDB URI and DB name)
 _settings = get_settings()
 
-# Connect to MongoDB using your connection string from settings
-client = AsyncIOMotorClient(_settings.MONGODB_URI)
+# ❗ IMPORTANT: cast MONGODB_URI to str so Motor/PyMongo don't choke on a Url object
+client = AsyncIOMotorClient(str(_settings.MONGODB_URI))
 
-# Use a simple DB name (MongoDB will create it if it doesn't exist)
-db_name = getattr(_settings, "MONGODB_DB_NAME", "artlix")
-db = client[db_name]
+# Pick the database name from settings
+db = client[_settings.MONGODB_DB_NAME]
 
-# Collections (tables)
-companies_collection = db["companies"]   # owners / companies
-employees_collection = db["employees"]   # employees linked to a company
-jobs_collection = db["jobs"]             # jobs created by employees
+# Collections we will use
+companies_collection = db["companies"]
+employees_collection = db["employees"]
+jobs_collection = db["jobs"]
