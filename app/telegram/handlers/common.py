@@ -1,5 +1,5 @@
 from aiogram import Router
-from aiogram.filters import CommandStart, Command
+from aiogram.filters import CommandStart
 from aiogram.types import Message
 
 router = Router()
@@ -8,45 +8,28 @@ router = Router()
 @router.message(CommandStart())
 async def cmd_start(message: Message) -> None:
     """
-    /start for everyone (owners + employees).
+    Handles the /start command for any user.
     """
     await message.answer(
-        "👋 Hey, I’m <b>Artlix</b>, your construction workflow assistant.\n\n"
-        "🏗 <b>Owners</b>\n"
-        "• Use /owner_help to see owner commands.\n\n"
-        "👷 <b>Employees</b>\n"
-        "• If your boss gave you a company code, just send it here to link your chat.\n"
-        "• After that, you can send job requests and updates and I’ll keep everything organized."
-    )
-
-
-@router.message(Command("help"))
-async def cmd_help(message: Message) -> None:
-    """
-    Simple /help command.
-    """
-    await message.answer(
-        "🧠 <b>Artlix help</b>\n\n"
-        "Available basics:\n"
-        "• /start – intro message\n"
-        "• /help – this help\n"
-        "• /owner_help – commands for company owners\n\n"
-        "Employees can paste their company code to connect their chat."
+        "👋 Hey! I'm Artlix.\n\n"
+        "I help construction teams capture jobs, schedule work,\n"
+        "and keep owners in the loop.\n\n"
+        "🧱 If you're an *owner*, use /owner_setup to create your company space.\n"
+        "👷 If you're an *employee*, your boss will share a code so you can connect."
     )
 
 
 @router.message()
-async def fallback_handler(message: Message) -> None:
+async def fallback_message(message: Message) -> None:
     """
-    Fallback for any text that isn't caught by other handlers.
-    For now just acknowledges the message.
+    Handles any message that didn't match other handlers.
+    For now it's just a simple reply, later we'll connect this to the decision engine.
     """
-    # For now we just echo. Later we’ll plug in the decision engine + workflows.
     await message.answer(
-        "🤖 I got your message.\n"
-        "Soon I’ll be able to:\n"
+        "🤖 I got your message!\n"
+        "Soon I'll be smart enough to:\n"
         "• Parse job requests\n"
-        "• Update sheets and calendars\n"
-        "• Notify your boss automatically.\n\n"
-        "For now, try /help."
+        "• Log them to Sheets\n"
+        "• Notify your team\n\n"
+        "For now, try /start or /owner_setup."
     )

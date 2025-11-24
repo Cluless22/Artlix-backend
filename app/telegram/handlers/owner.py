@@ -1,61 +1,96 @@
-from aiogram import Router
+from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.types import Message
-from aiogram.enums import ChatType
+
+from app.domain.repositories import (
+    create_company,
+    get_company_by_owner,
+    create_employee,
+)
+from app.domain.models import UserRole
 
 router = Router()
 
 
-def _fake_company_code_for_now(user_id: int) -> str:
+@router.message(Command("owner_setup"))
+async def owner_setup(message: Message) -> None:
     """
-    Temporary helper to simulate generating a company code.
-    Later we will replace this with a real DB call.
+    Owner runs this in a private chat to register their company.
+    For now, we use their Telegram user id as the owner id.
     """
-    # Very simple deterministic code for demo purposes
-    return f"CO-{user_id % 100000:05d}"
+    owner_tg_id = message.from_user.id
 
-
-@router.message(Command("owner_help"))
-async def owner_help(message: Message) -> None:
-    """
-    Show help for owners.
-    Only makes sense in private chat with the owner.
-    """
-    if message.chat.type != ChatType.PRIVATE:
-        await message.answer("ℹ️ Owner commands should be used in a private chat with the bot.")
+    # Check if this owner already has a company
+    existing = await get_company_by_owner(owner_tg_id)
+    if existing:
+        await message.answer(
+            f"✅ You already have a company registered:\n"
+            f"🏢 <b>{existing.name}</b>\n"
+            f"Company code: <code>{existing.code}</code>\n\n"
+            f"Share this code with employees so they can join."
+        )
         return
 
+    # Simple stub company name for now - later we'll ask for it interactively
+    company_name = f"{message.from_user.full_name}'s Company"
+
+    company = await create_company(
+        owner_telegram_id=owner_tg_id,
+        name=company_name,
+    )
+
     await message.answer(
-        "🏗 <b>Owner control panel</b>\n\n"
-        "Right now basic owner commands are:\n"
-        "• /owner_code – get your company invite code to give to employees\n\n"
-        "Employees will DM this bot, send that code, and I’ll link their chat "
-        "to your company. Later, I’ll:\n"
-        "• Track job intake\n"
-        "• Sync with Google Sheets + Calendar\n"
-        "• Send you daily digests and alerts. 🔔"
+        "🏢 Company created!\n\n"
+        f"Name: <b>{company.name}</b>\n"
+        f"Company code: <code>{company.code}</code>\n\n"
+        "👷 Share this code with your employees.\n"
+        "They will use /join_company <code> to connect."
     )
 
 
-@router.message(Command("owner_code"))
-async def owner_code(message: Message) -> None:
+@router.message(Command("create_employee"))
+async def create_employee_manual(message: Message) -> None:
     """
-    Return a simple 'company code' for the owner to share with employees.
-    Later this will be backed by MongoDB.
+    Temporary helper: owner can create an employee record manually.
+    Later, employees will self-join using /join_company <code>.
+    Usage: /create_employee John 123456789
     """
-    if message.chat.type != ChatType.PRIVATE:
-        await message.answer("ℹ️ Please DM me this command in private to get your company code.")
+    parts = message.text.split()
+    if len(parts) < 3:
+        await message.answer(
+            "Usage:\n"
+            "/create_employee <name> <employee_telegram_id>\n\n"
+            "Example:\n"
+            "/create_employee John 123456789"
+        )
         return
 
-    owner_id = message.from_user.id
-    code = _fake_company_code_for_now(owner_id)
+    owner_tg_id = message.from_user.id
+    name = parts[1]
+    try:
+        employee_tg_id = int(parts[2])
+    except ValueError:
+        await message.answer("❌ employee_telegram_id must be a number.")
+        return
+
+    company = await get_company_by_owner(owner_tg_id)
+    if not company:
+        await message.answer(
+            "❌ You don't have a company yet.\n"
+            "Run /owner_setup first."
+        )
+        return
+
+    employee = await create_employee(
+        company_id=company.id,
+        name=name,
+        telegram_id=employee_tg_id,
+        role=UserRole.EMPLOYEE,
+    )
 
     await message.answer(
-        "🔐 <b>Your Artlix company code</b>\n\n"
-        f"<code>{code}</code>\n\n"
-        "👉 Share this code with your employees.\n"
-        "They should:\n"
-        "1️⃣ Open a private chat with this bot\n"
-        "2️⃣ Paste this code\n"
-        "3️⃣ Then they get their own AI-powered workspace."
+        f"✅ Employee created:\n"
+        f"👷 {employee.name}\n"
+        f"Telegram id: <code>{employee.telegram_id}</code>\n"
+        f"Company: <b>{company.name}</b>"
     )
