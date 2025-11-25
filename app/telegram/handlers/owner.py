@@ -15,7 +15,7 @@ router = Router()
 @router.message(Command("owner_setup"))
 async def owner_setup(message: Message) -> None:
     """
-    Owner creates a company and gets an office code to share with employees.
+    Owner creates a company and gets an office code to share.
 
     Usage:
         /owner_setup My Company Name
@@ -23,21 +23,18 @@ async def owner_setup(message: Message) -> None:
     from_user = message.from_user
     owner_tg_id = from_user.id
 
-    # Check if owner already has a company
+    # Already has a company?
     existing_company = await get_company_by_owner(owner_tg_id)
     if existing_company:
         await message.answer(
             "✅ You already have a company set up.\n\n"
             f"🏢 <b>{existing_company.title}</b>\n"
             f"🔑 Office code: <code>{existing_company.office_code}</code>\n\n"
-            "Share this code with employees so they can join using:\n"
-            "<code>/join_company "
-            f"{existing_company.office_code} Their Name</code>"
+            "Share this with employees. They can join using:\n"
+            f"<code>/join_company {existing_company.office_code} Their Name</code>"
         )
         return
 
-    # Parse company name from command text
-    # Expect: "/owner_setup My Company Name"
     parts = (message.text or "").split(maxsplit=1)
     if len(parts) < 2:
         await message.answer(
@@ -53,7 +50,6 @@ async def owner_setup(message: Message) -> None:
         title=company_title,
     )
 
-    # Also create the owner as an employee record
     owner_name = from_user.full_name or from_user.username or "Owner"
 
     owner_employee = await create_employee(

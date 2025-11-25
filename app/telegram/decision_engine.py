@@ -11,16 +11,20 @@ class JobClassificationResult:
     scheduled_for: Optional[datetime] = None
     client_name: Optional[str] = None
     location: Optional[str] = None
-    company_id: Optional[str] = None  # reserved for future use
+    company_id: Optional[str] = None
 
 
 def classify_message_and_build_job(text: str) -> JobClassificationResult:
     """
-    VERY simple placeholder "classifier":
-    - If message is short, we treat it as non-job
-    - Otherwise we mark it as a generic job with the raw text
+    SUPER simple placeholder:
+
+    - If message is too short, treat it as non-job.
+    - Otherwise treat the whole text as job description.
     """
-    cleaned = (text or "").strip()
+    if not text:
+        return JobClassificationResult(is_job=False)
+
+    cleaned = text.strip()
 
     if len(cleaned) < 15:
         return JobClassificationResult(is_job=False)

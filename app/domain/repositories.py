@@ -27,9 +27,8 @@ def _generate_office_code(length: int = 6) -> str:
     return "".join(random.choice(alphabet) for _ in range(length))
 
 
-# ---------------------------------------------------------------------------
-# Company helpers
-# ---------------------------------------------------------------------------
+# -------------------- COMPANY --------------------
+
 
 async def create_company(
     *,
@@ -66,9 +65,8 @@ async def get_company_by_code(office_code: str) -> Optional[Company]:
     return Company.model_validate(doc)
 
 
-# ---------------------------------------------------------------------------
-# Employee helpers
-# ---------------------------------------------------------------------------
+# -------------------- EMPLOYEE --------------------
+
 
 async def create_employee(
     *,
@@ -107,7 +105,6 @@ async def get_or_create_employee_by_telegram(
     if existing:
         return Employee.model_validate(existing)
 
-    # create new
     doc = {
         "company_id": company_oid,
         "telegram_id": telegram_id,
@@ -131,9 +128,8 @@ async def get_employee_by_telegram(
     return Employee.model_validate(doc)
 
 
-# ---------------------------------------------------------------------------
-# Job helpers
-# ---------------------------------------------------------------------------
+# -------------------- JOB --------------------
+
 
 async def create_job(
     *,

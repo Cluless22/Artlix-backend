@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Any
 from enum import Enum
 
 from pydantic import BaseModel, Field
@@ -11,7 +11,8 @@ class UserRole(str, Enum):
 
 
 class Company(BaseModel):
-    id: Optional[str] = Field(default=None, alias="_id")
+    # Use Any so Mongo ObjectId doesn't break validation
+    id: Optional[Any] = Field(default=None, alias="_id")
     owner_telegram_id: int
     title: str
     office_code: str
@@ -19,13 +20,13 @@ class Company(BaseModel):
 
     @property
     def name(self) -> str:
-        # convenience so code can use company.name
+        # convenience so we can use company.name
         return self.title
 
 
 class Employee(BaseModel):
-    id: Optional[str] = Field(default=None, alias="_id")
-    company_id: str
+    id: Optional[Any] = Field(default=None, alias="_id")
+    company_id: Any
     telegram_id: int
     name: Optional[str] = None
     role: UserRole = UserRole.EMPLOYEE
@@ -33,9 +34,9 @@ class Employee(BaseModel):
 
 
 class Job(BaseModel):
-    id: Optional[str] = Field(default=None, alias="_id")
-    company_id: str
-    created_by_employee_id: str
+    id: Optional[Any] = Field(default=None, alias="_id")
+    company_id: Any
+    created_by_employee_id: Any
 
     client_name: Optional[str] = None
     job_type: Optional[str] = None

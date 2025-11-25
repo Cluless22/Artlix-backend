@@ -7,9 +7,6 @@ router = Router()
 
 @router.message(CommandStart())
 async def cmd_start(message: Message) -> None:
-    """
-    Handles the /start command for any user.
-    """
     await message.answer(
         "👋 Hey! I'm Artlix.\n\n"
         "I help construction teams capture jobs, schedule work,\n"
@@ -23,9 +20,6 @@ async def cmd_start(message: Message) -> None:
 
 @router.message()
 async def fallback_message(message: Message) -> None:
-    """
-    Handles any message that didn't match other handlers.
-    """
     await message.answer(
         "🤖 I got your message.\n\n"
         "If you're an owner, try:\n"

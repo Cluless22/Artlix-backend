@@ -63,11 +63,9 @@ async def capture_job(message: Message) -> None:
     """
     text = message.text or ""
 
-    # Ignore commands like /start, /owner_setup, etc.
     if text.startswith("/"):
         return
 
-    # Make sure this user is an employee in some company
     employee = await get_employee_by_telegram(telegram_id=message.from_user.id)
     if not employee:
         await message.answer(
@@ -97,9 +95,7 @@ async def capture_job(message: Message) -> None:
         raw_text=text,
     )
 
-    when_str = (
-        job.scheduled_for.isoformat() if job.scheduled_for else "unscheduled"
-    )
+    when_str = job.scheduled_for.isoformat() if job.scheduled_for else "unscheduled"
 
     await message.answer(
         "✅ Job captured!\n\n"
