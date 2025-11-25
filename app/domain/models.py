@@ -1,6 +1,13 @@
 from datetime import datetime
 from typing import Optional
+from enum import Enum
+
 from pydantic import BaseModel, Field
+
+
+class UserRole(str, Enum):
+    OWNER = "owner"
+    EMPLOYEE = "employee"
 
 
 class Company(BaseModel):
@@ -10,14 +17,18 @@ class Company(BaseModel):
     office_code: str
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
+    # So code like company.name still works, even though the field is "title"
+    @property
+    def name(self) -> str:
+        return self.title
+
 
 class Employee(BaseModel):
     id: Optional[str] = Field(default=None, alias="_id")
-    telegram_id: int
-    username: Optional[str] = None
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
     company_id: str
+    telegram_id: int
+    name: Optional[str] = None
+    role: UserRole = UserRole.EMPLOYEE
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
