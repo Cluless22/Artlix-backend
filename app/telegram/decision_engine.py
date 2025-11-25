@@ -11,23 +11,16 @@ class JobClassificationResult:
     scheduled_for: Optional[datetime] = None
     client_name: Optional[str] = None
     location: Optional[str] = None
-    company_id: Optional[str] = None  # we'll fill this once we attach employee->company lookup
+    company_id: Optional[str] = None  # reserved for future use
 
 
 def classify_message_and_build_job(text: str) -> JobClassificationResult:
     """
-    Super simple starter 'decision engine'.
-
-    Later this will:
-    - use NLP / LLM
-    - detect intents (job, schedule change, status update, etc.)
-    - extract entities (date, time, client, address)
-
-    For now:
-    - if text is short, we say it's not a job
-    - otherwise we treat it as a job with the whole text as description.
+    VERY simple placeholder "classifier":
+    - If message is short, we treat it as non-job
+    - Otherwise we mark it as a generic job with the raw text
     """
-    cleaned = text.strip()
+    cleaned = (text or "").strip()
 
     if len(cleaned) < 15:
         return JobClassificationResult(is_job=False)

@@ -15,8 +15,9 @@ bot = Bot(
 dp = Dispatcher()
 
 # Import and register routers from handlers
-from app.telegram.handlers import common, owner, employee  # noqa: E402
+from app.telegram.handlers import owner, employee, common  # noqa: E402
 
-dp.include_router(common.router)
+# Order matters: owner + employee first, then generic common handlers
 dp.include_router(owner.router)
 dp.include_router(employee.router)
+dp.include_router(common.router)

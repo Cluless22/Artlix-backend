@@ -14,8 +14,10 @@ async def cmd_start(message: Message) -> None:
         "👋 Hey! I'm Artlix.\n\n"
         "I help construction teams capture jobs, schedule work,\n"
         "and keep owners in the loop.\n\n"
-        "🧱 If you're an *owner*, use /owner_setup to create your company space.\n"
-        "👷 If you're an *employee*, your boss will share a code so you can connect."
+        "Getting started:\n"
+        "• Owners: /owner_setup My Company Name\n"
+        "• Employees: /join_company OFFICE_CODE Your Name\n\n"
+        "After you join a company, just send me job requests as plain text."
     )
 
 
@@ -23,13 +25,11 @@ async def cmd_start(message: Message) -> None:
 async def fallback_message(message: Message) -> None:
     """
     Handles any message that didn't match other handlers.
-    For now it's just a simple reply, later we'll connect this to the decision engine.
     """
     await message.answer(
-        "🤖 I got your message!\n"
-        "Soon I'll be smart enough to:\n"
-        "• Parse job requests\n"
-        "• Log them to Sheets\n"
-        "• Notify your team\n\n"
-        "For now, try /start or /owner_setup."
+        "🤖 I got your message.\n\n"
+        "If you're an owner, try:\n"
+        "  /owner_setup My Company Name\n\n"
+        "If you're an employee, ask your owner for the office code, then run:\n"
+        "  /join_company OFFICE_CODE Your Name"
     )

@@ -1,25 +1,30 @@
 from datetime import datetime
 from typing import Optional, Union
+import random
+import string
 
 from bson import ObjectId
 
-from app.domain.models import Company, Employee, Job, UserRole
 from app.infrastructure.db import (
     companies_collection,
     employees_collection,
     jobs_collection,
 )
+from app.domain.models import Company, Employee, Job, UserRole
 
-ObjectIdLike = Union[str, ObjectId]
+
+ObjectIdLike = Union[ObjectId, str]
 
 
 def _to_object_id(value: ObjectIdLike) -> ObjectId:
-    """
-    Accept either a string or ObjectId and always return an ObjectId.
-    """
     if isinstance(value, ObjectId):
         return value
     return ObjectId(str(value))
+
+
+def _generate_office_code(length: int = 6) -> str:
+    alphabet = string.ascii_uppercase + string.digits
+    return "".join(random.choice(alphabet) for _ in range(length))
 
 
 # ---------------------------------------------------------------------------
@@ -30,14 +35,16 @@ async def create_company(
     *,
     owner_telegram_id: int,
     title: str,
-    office_code: str,
 ) -> Company:
+    office_code = _generate_office_code()
+
     doc = {
         "owner_telegram_id": owner_telegram_id,
         "title": title,
         "office_code": office_code,
         "created_at": datetime.utcnow(),
     }
+
     result = await companies_collection.insert_one(doc)
     doc["_id"] = result.inserted_id
     return Company.model_validate(doc)
@@ -51,7 +58,9 @@ async def get_company_by_owner(owner_telegram_id: int) -> Optional[Company]:
 
 
 async def get_company_by_code(office_code: str) -> Optional[Company]:
-    doc = await companies_collection.find_one({"office_code": office_code})
+    doc = await companies_collection.find_one(
+        {"office_code": office_code.strip().upper()}
+    )
     if not doc:
         return None
     return Company.model_validate(doc)
@@ -72,9 +81,9 @@ async def create_employee(
 
     doc = {
         "company_id": company_oid,
-        "name": name,
         "telegram_id": telegram_id,
-        "role": role.value if hasattr(role, "value") else str(role),
+        "name": name,
+        "role": role.value,
         "created_at": datetime.utcnow(),
     }
 
@@ -88,7 +97,7 @@ async def get_or_create_employee_by_telegram(
     company_id: ObjectIdLike,
     telegram_id: int,
     name: Optional[str] = None,
-    role: Optional[UserRole] = None,
+    role: UserRole = UserRole.EMPLOYEE,
 ) -> Employee:
     company_oid = _to_object_id(company_id)
 
@@ -98,19 +107,27 @@ async def get_or_create_employee_by_telegram(
     if existing:
         return Employee.model_validate(existing)
 
+    # create new
     doc = {
         "company_id": company_oid,
         "telegram_id": telegram_id,
         "name": name or "Unknown",
-        "role": (
-            role.value if (role and hasattr(role, "value"))
-            else (str(role) if role else "employee")
-        ),
+        "role": role.value,
         "created_at": datetime.utcnow(),
     }
 
     result = await employees_collection.insert_one(doc)
     doc["_id"] = result.inserted_id
+    return Employee.model_validate(doc)
+
+
+async def get_employee_by_telegram(
+    *,
+    telegram_id: int,
+) -> Optional[Employee]:
+    doc = await employees_collection.find_one({"telegram_id": telegram_id})
+    if not doc:
+        return None
     return Employee.model_validate(doc)
 
 
@@ -137,11 +154,10 @@ async def create_job(
     doc = {
         "company_id": company_oid,
         "created_by_employee_id": employee_oid,
-        "title": title,
-        "description": description,
-        "scheduled_for": scheduled_for,
         "client_name": client_name,
+        "job_type": title,
         "location": location,
+        "scheduled_for": scheduled_for,
         "budget": budget,
         "notes": notes,
         "raw_text": raw_text,

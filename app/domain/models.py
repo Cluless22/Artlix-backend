@@ -17,9 +17,9 @@ class Company(BaseModel):
     office_code: str
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
-    # So code like company.name still works, even though the field is "title"
     @property
     def name(self) -> str:
+        # convenience so code can use company.name
         return self.title
 
 
