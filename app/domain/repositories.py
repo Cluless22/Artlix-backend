@@ -9,6 +9,7 @@ from app.infrastructure.db import (
     companies_collection,
     employees_collection,
     jobs_collection,
+    integrations_collection,
 )
 from app.domain.models import Company, Employee, Job, UserRole
 
@@ -75,13 +76,14 @@ async def get_company_by_code(office_code: str) -> Optional[Company]:
 
 async def delete_company_and_related(company_id: ObjectIdLike) -> int:
     """
-    Delete a company and all its employees + jobs.
+    Delete a company and all its employees + jobs + integrations.
     Returns number of company docs deleted (0 or 1).
     """
     company_oid = _to_object_id(company_id)
     res_company = await companies_collection.delete_one({"_id": company_oid})
     await employees_collection.delete_many({"company_id": company_oid})
     await jobs_collection.delete_many({"company_id": company_oid})
+    await integrations_collection.delete_many({"company_id": company_oid})
     return res_company.deleted_count
 
 
@@ -193,3 +195,44 @@ async def create_job(
     result = await jobs_collection.insert_one(doc)
     doc["_id"] = result.inserted_id
     return Job.model_validate(doc)
+
+
+# -------------------- INTEGRATIONS (webhooks) --------------------
+
+
+async def set_company_webhook(
+    *,
+    company_id: ObjectIdLike,
+    url: str,
+    name: str = "default_webhook",
+) -> None:
+    """
+    Upsert a webhook integration for a company.
+    One row per (company_id, name).
+    """
+    company_oid = _to_object_id(company_id)
+
+    doc = {
+        "company_id": company_oid,
+        "name": name,
+        "url": url,
+        "created_at": datetime.utcnow(),
+    }
+
+    await integrations_collection.update_one(
+        {"company_id": company_oid, "name": name},
+        {"$set": doc},
+        upsert=True,
+    )
+
+
+async def get_company_webhooks(
+    *,
+    company_id: ObjectIdLike,
+) -> List[dict]:
+    company_oid = _to_object_id(company_id)
+    cursor = integrations_collection.find({"company_id": company_oid})
+    webhooks: List[dict] = []
+    async for doc in cursor:
+        webhooks.append(doc)
+    return webhooks

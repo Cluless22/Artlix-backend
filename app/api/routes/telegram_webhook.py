@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from aiogram.types import Update
+import httpx
 
 from app.telegram.bot import bot
 from app.domain.repositories import (
@@ -13,6 +14,8 @@ from app.domain.repositories import (
     delete_employee_by_telegram,
     delete_company_and_related,
     create_job,
+    set_company_webhook,
+    get_company_webhooks,
 )
 from app.domain.models import UserRole
 from app.telegram.decision_engine import classify_message_and_build_job
@@ -32,9 +35,10 @@ async def telegram_webhook(update: dict):
       • /new_company My Other Company
       • /my_companies
       • /delete_company OFFICE_CODE
+      • /connect_webhook OFFICE_CODE URL
       • /join_company OFFICE_CODE Your Name
       • /leave_company
-      • any other text → try to capture as a job
+      • any other text → try to capture as a job and send to webhooks
     """
     print("[telegram_webhook] incoming update:", update)
 
@@ -66,11 +70,12 @@ async def telegram_webhook(update: dict):
                     "Getting started:\n"
                     "• Owners: /owner_setup My Company Name\n"
                     "• Employees: /join_company OFFICE_CODE Your Name\n\n"
-                    "Extra owner commands:\n"
+                    "Owner extras:\n"
                     "• /my_companies\n"
                     "• /new_company Another Company Name\n"
                     "• /delete_company OFFICE_CODE\n"
-                    "Employees can leave with:\n"
+                    "• /connect_webhook OFFICE_CODE https://your-automation-url\n"
+                    "Employees:\n"
                     "• /leave_company"
                 ),
             )
@@ -81,7 +86,6 @@ async def telegram_webhook(update: dict):
             parts = text.split(maxsplit=1)
             owner_tg_id = from_user.id
 
-            # If already has a company, show info + hint for /my_companies & /new_company
             existing = await get_company_by_owner(owner_tg_id)
             if existing:
                 await bot.send_message(
@@ -173,7 +177,6 @@ async def telegram_webhook(update: dict):
                 or "Owner"
             )
 
-            # Create owner employee for this new company as well
             owner_employee = await create_employee(
                 company_id=company.id,
                 name=owner_name,
@@ -221,7 +224,9 @@ async def telegram_webhook(update: dict):
 
             lines.append(
                 "\nDelete one with:\n"
-                "<code>/delete_company OFFICE_CODE</code>"
+                "<code>/delete_company OFFICE_CODE</code>\n"
+                "Connect automations with:\n"
+                "<code>/connect_webhook OFFICE_CODE https://your-automation-url</code>"
             )
 
             await bot.send_message(
@@ -252,7 +257,6 @@ async def telegram_webhook(update: dict):
                 )
                 return {"ok": True}
 
-            # Only the owner of that company can delete it
             if company.owner_telegram_id != from_user.id:
                 await bot.send_message(
                     chat_id=chat_id,
@@ -277,12 +281,65 @@ async def telegram_webhook(update: dict):
                     "🗑️ Company deleted.\n\n"
                     f"🏢 <b>{company.title}</b>\n"
                     f"🔑 Code: <code>{company.office_code}</code>\n\n"
-                    "All employees and jobs linked to this company were removed."
+                    "All employees, jobs, and integrations linked to this company were removed."
                 ),
             )
             return {"ok": True}
 
-        # --- 7) /join_company OFFICE_CODE Your Name ---
+        # --- 7) /connect_webhook OFFICE_CODE URL ---
+        if text.startswith("/connect_webhook"):
+            parts = text.split(maxsplit=2)
+            if len(parts) < 3:
+                await bot.send_message(
+                    chat_id=chat_id,
+                    text=(
+                        "Connect an automation webhook to a company:\n\n"
+                        "<code>/connect_webhook OFFICE_CODE https://your-automation-url</code>\n\n"
+                        "Example (n8n, Zapier, Make, etc.). "
+                        "On each new job, Artlix will POST JSON to that URL."
+                    ),
+                )
+                return {"ok": True}
+
+            office_code = parts[1].strip().upper()
+            webhook_url = parts[2].strip()
+
+            company = await get_company_by_code(office_code)
+            if not company:
+                await bot.send_message(
+                    chat_id=chat_id,
+                    text="❌ I couldn't find a company with that office code.",
+                )
+                return {"ok": True}
+
+            if company.owner_telegram_id != from_user.id:
+                await bot.send_message(
+                    chat_id=chat_id,
+                    text=(
+                        "❌ Only the owner of this company can connect webhooks."
+                    ),
+                )
+                return {"ok": True}
+
+            await set_company_webhook(
+                company_id=company.id,
+                url=webhook_url,
+                name="default_webhook",
+            )
+
+            await bot.send_message(
+                chat_id=chat_id,
+                text=(
+                    "✅ Webhook connected!\n\n"
+                    f"🏢 <b>{company.title}</b>\n"
+                    f"🔗 URL: <code>{webhook_url}</code>\n\n"
+                    "From now on, each new job for this company will be sent "
+                    "as JSON to that URL."
+                ),
+            )
+            return {"ok": True}
+
+        # --- 8) /join_company OFFICE_CODE Your Name ---
         if text.startswith("/join_company"):
             parts = text.split(maxsplit=2)
             if len(parts) < 3:
@@ -329,7 +386,7 @@ async def telegram_webhook(update: dict):
             )
             return {"ok": True}
 
-        # --- 8) /leave_company ---
+        # --- 9) /leave_company ---
         if text.startswith("/leave_company"):
             deleted = await delete_employee_by_telegram(from_user.id)
             if deleted == 0:
@@ -353,7 +410,7 @@ async def telegram_webhook(update: dict):
             )
             return {"ok": True}
 
-        # --- 9) Any other text → treat as job from an employee ---
+        # --- 10) Any other text → treat as job from an employee ---
         employee = await get_employee_by_telegram(telegram_id=from_user.id)
         if not employee:
             await bot.send_message(
@@ -399,9 +456,60 @@ async def telegram_webhook(update: dict):
                 f"👤 Client: {job.client_name or 'N/A'}\n"
                 f"📍 Location: {job.location or 'N/A'}\n"
                 f"🗓 When: {when_str}\n\n"
-                "Soon I'll sync this to your job tracking sheet and notify the owner."
+                "If you connected a webhook, this job was also sent to your automation."
             ),
         )
+
+        # --- 11) Send job to all webhooks for this company ---
+        try:
+            webhooks = await get_company_webhooks(company_id=employee.company_id)
+            if webhooks:
+                payload = {
+                    "event": "job_created",
+                    "company_id": str(employee.company_id),
+                    "job": {
+                        "id": str(job.id),
+                        "job_type": job.job_type,
+                        "client_name": job.client_name,
+                        "location": job.location,
+                        "scheduled_for": job.scheduled_for.isoformat()
+                        if job.scheduled_for
+                        else None,
+                        "notes": job.notes,
+                        "raw_text": job.raw_text,
+                        "created_at": job.created_at.isoformat(),
+                        "status": job.status,
+                    },
+                    "telegram": {
+                        "user_id": from_user.id,
+                        "username": from_user.username,
+                        "first_name": from_user.first_name,
+                        "last_name": from_user.last_name,
+                    },
+                }
+
+                async with httpx.AsyncClient(timeout=5.0) as client:
+                    for wh in webhooks:
+                        url = wh.get("url")
+                        if not url:
+                            continue
+                        try:
+                            resp = await client.post(url, json=payload)
+                            print(
+                                "[webhook] sent to",
+                                url,
+                                "status",
+                                resp.status_code,
+                            )
+                        except Exception as e:
+                            print(
+                                "[webhook] error sending to",
+                                url,
+                                "error:",
+                                repr(e),
+                            )
+        except Exception as e:
+            print("[webhook] general error:", repr(e))
 
     except Exception as e:
         # Don't let the whole webhook crash
