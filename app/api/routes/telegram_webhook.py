@@ -5,10 +5,13 @@ from app.telegram.bot import bot
 from app.domain.repositories import (
     create_company,
     get_company_by_owner,
+    get_companies_by_owner,
     create_employee,
     get_company_by_code,
     get_or_create_employee_by_telegram,
     get_employee_by_telegram,
+    delete_employee_by_telegram,
+    delete_company_and_related,
     create_job,
 )
 from app.domain.models import UserRole
@@ -22,12 +25,15 @@ async def telegram_webhook(update: dict):
     """
     Telegram sends all updates here as JSON.
 
-    Instead of using Aiogram routers, we handle everything
-    directly in this endpoint:
+    Directly handle bot logic:
 
       • /start
       • /owner_setup My Company Name
+      • /new_company My Other Company
+      • /my_companies
+      • /delete_company OFFICE_CODE
       • /join_company OFFICE_CODE Your Name
+      • /leave_company
       • any other text → try to capture as a job
     """
     print("[telegram_webhook] incoming update:", update)
@@ -46,6 +52,7 @@ async def telegram_webhook(update: dict):
 
     chat_id = msg.chat.id
     text = (msg.text or "").strip()
+    from_user = msg.from_user
 
     try:
         # --- 2) /start ---
@@ -59,7 +66,12 @@ async def telegram_webhook(update: dict):
                     "Getting started:\n"
                     "• Owners: /owner_setup My Company Name\n"
                     "• Employees: /join_company OFFICE_CODE Your Name\n\n"
-                    "After you join a company, just send me job requests as plain text."
+                    "Extra owner commands:\n"
+                    "• /my_companies\n"
+                    "• /new_company Another Company Name\n"
+                    "• /delete_company OFFICE_CODE\n"
+                    "Employees can leave with:\n"
+                    "• /leave_company"
                 ),
             )
             return {"ok": True}
@@ -67,20 +79,22 @@ async def telegram_webhook(update: dict):
         # --- 3) /owner_setup My Company Name ---
         if text.startswith("/owner_setup"):
             parts = text.split(maxsplit=1)
-            from_user = msg.from_user
             owner_tg_id = from_user.id
 
-            # If already has a company, just show info
+            # If already has a company, show info + hint for /my_companies & /new_company
             existing = await get_company_by_owner(owner_tg_id)
             if existing:
                 await bot.send_message(
                     chat_id=chat_id,
                     text=(
-                        "✅ You already have a company set up.\n\n"
+                        "✅ You already have at least one company set up.\n\n"
+                        f"Example:\n"
                         f"🏢 <b>{existing.title}</b>\n"
                         f"🔑 Office code: <code>{existing.office_code}</code>\n\n"
-                        "Share this code with employees so they can join using:\n"
-                        f"<code>/join_company {existing.office_code} Their Name</code>"
+                        "You can see all your companies with:\n"
+                        "<code>/my_companies</code>\n\n"
+                        "You can create a new one with:\n"
+                        "<code>/new_company Another Company Name</code>"
                     ),
                 )
                 return {"ok": True}
@@ -89,7 +103,7 @@ async def telegram_webhook(update: dict):
                 await bot.send_message(
                     chat_id=chat_id,
                     text=(
-                        "To set up your company, use:\n"
+                        "To set up your first company, use:\n"
                         "<code>/owner_setup My Company Name</code>"
                     ),
                 )
@@ -125,12 +139,150 @@ async def telegram_webhook(update: dict):
                     f"<code>{company.office_code}</code>\n\n"
                     "Employees join with:\n"
                     f"<code>/join_company {company.office_code} Their Name</code>\n\n"
-                    "After they join, they can send me job requests as plain text."
+                    "You can create more companies later with:\n"
+                    "<code>/new_company Another Company Name</code>"
                 ),
             )
             return {"ok": True}
 
-        # --- 4) /join_company OFFICE_CODE Your Name ---
+        # --- 4) /new_company Another Company Name ---
+        if text.startswith("/new_company"):
+            parts = text.split(maxsplit=1)
+            owner_tg_id = from_user.id
+
+            if len(parts) < 2:
+                await bot.send_message(
+                    chat_id=chat_id,
+                    text=(
+                        "To create a new company, use:\n"
+                        "<code>/new_company Another Company Name</code>"
+                    ),
+                )
+                return {"ok": True}
+
+            company_title = parts[1].strip()
+
+            company = await create_company(
+                owner_telegram_id=owner_tg_id,
+                title=company_title,
+            )
+
+            owner_name = (
+                from_user.full_name
+                or from_user.username
+                or "Owner"
+            )
+
+            # Create owner employee for this new company as well
+            owner_employee = await create_employee(
+                company_id=company.id,
+                name=owner_name,
+                telegram_id=owner_tg_id,
+                role=UserRole.OWNER,
+            )
+
+            await bot.send_message(
+                chat_id=chat_id,
+                text=(
+                    "✅ New company created!\n\n"
+                    f"🏢 <b>{company.title}</b>\n"
+                    f"👑 Owner: {owner_employee.name}\n"
+                    f"🔑 Office code (share with your team): "
+                    f"<code>{company.office_code}</code>\n\n"
+                    "Employees join with:\n"
+                    f"<code>/join_company {company.office_code} Their Name</code>\n\n"
+                    "See all your companies with:\n"
+                    "<code>/my_companies</code>"
+                ),
+            )
+            return {"ok": True}
+
+        # --- 5) /my_companies ---
+        if text.startswith("/my_companies"):
+            owner_tg_id = from_user.id
+            companies = await get_companies_by_owner(owner_tg_id)
+
+            if not companies:
+                await bot.send_message(
+                    chat_id=chat_id,
+                    text=(
+                        "You don't own any companies yet.\n\n"
+                        "Create one with:\n"
+                        "<code>/owner_setup My Company Name</code>"
+                    ),
+                )
+                return {"ok": True}
+
+            lines = ["📋 <b>Your companies:</b>"]
+            for c in companies:
+                lines.append(
+                    f"• {c.title} — code: <code>{c.office_code}</code>"
+                )
+
+            lines.append(
+                "\nDelete one with:\n"
+                "<code>/delete_company OFFICE_CODE</code>"
+            )
+
+            await bot.send_message(
+                chat_id=chat_id,
+                text="\n".join(lines),
+            )
+            return {"ok": True}
+
+        # --- 6) /delete_company OFFICE_CODE ---
+        if text.startswith("/delete_company"):
+            parts = text.split(maxsplit=1)
+            if len(parts) < 2:
+                await bot.send_message(
+                    chat_id=chat_id,
+                    text=(
+                        "To delete a company, use:\n"
+                        "<code>/delete_company OFFICE_CODE</code>"
+                    ),
+                )
+                return {"ok": True}
+
+            code = parts[1].strip().upper()
+            company = await get_company_by_code(code)
+            if not company:
+                await bot.send_message(
+                    chat_id=chat_id,
+                    text="❌ I couldn't find a company with that office code.",
+                )
+                return {"ok": True}
+
+            # Only the owner of that company can delete it
+            if company.owner_telegram_id != from_user.id:
+                await bot.send_message(
+                    chat_id=chat_id,
+                    text=(
+                        "❌ You are not the owner of this company, "
+                        "so you can't delete it."
+                    ),
+                )
+                return {"ok": True}
+
+            deleted_count = await delete_company_and_related(company.id)
+            if deleted_count == 0:
+                await bot.send_message(
+                    chat_id=chat_id,
+                    text="Something went wrong while deleting that company.",
+                )
+                return {"ok": True}
+
+            await bot.send_message(
+                chat_id=chat_id,
+                text=(
+                    "🗑️ Company deleted.\n\n"
+                    f"🏢 <b>{company.title}</b>\n"
+                    f"🔑 Code: <code>{company.office_code}</code>\n\n"
+                    "All employees and jobs linked to this company were removed."
+                ),
+            )
+            return {"ok": True}
+
+        # --- 7) /join_company OFFICE_CODE Your Name ---
         if text.startswith("/join_company"):
             parts = text.split(maxsplit=2)
             if len(parts) < 3:
@@ -159,7 +311,7 @@ async def telegram_webhook(update: dict):
 
             employee = await get_or_create_employee_by_telegram(
                 company_id=company.id,
-                telegram_id=msg.from_user.id,
+                telegram_id=from_user.id,
                 name=employee_name,
             )
 
@@ -170,13 +322,39 @@ async def telegram_webhook(update: dict):
                     f"🏢 <b>{company.title}</b>\n"
                     f"👷 Employee: {employee.name}\n\n"
                     "Now just send me job requests as text (who / what / where / when), "
-                    "and I’ll capture them as jobs."
+                    "and I’ll capture them as jobs.\n\n"
+                    "If you ever need to leave, use:\n"
+                    "<code>/leave_company</code>"
                 ),
             )
             return {"ok": True}
 
-        # --- 5) Any other text → treat as job from an employee ---
-        employee = await get_employee_by_telegram(telegram_id=msg.from_user.id)
+        # --- 8) /leave_company ---
+        if text.startswith("/leave_company"):
+            deleted = await delete_employee_by_telegram(from_user.id)
+            if deleted == 0:
+                await bot.send_message(
+                    chat_id=chat_id,
+                    text=(
+                        "You are not currently linked to any company.\n\n"
+                        "To join one, use:\n"
+                        "<code>/join_company OFFICE_CODE Your Name</code>"
+                    ),
+                )
+                return {"ok": True}
+
+            await bot.send_message(
+                chat_id=chat_id,
+                text=(
+                    "✅ You have left your company.\n\n"
+                    "If you want to join another company later, use:\n"
+                    "<code>/join_company OFFICE_CODE Your Name</code>"
+                ),
+            )
+            return {"ok": True}
+
+        # --- 9) Any other text → treat as job from an employee ---
+        employee = await get_employee_by_telegram(telegram_id=from_user.id)
         if not employee:
             await bot.send_message(
                 chat_id=chat_id,

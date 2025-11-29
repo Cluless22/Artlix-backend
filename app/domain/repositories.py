@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional, Union
+from typing import Optional, Union, List
 import random
 import string
 
@@ -56,6 +56,14 @@ async def get_company_by_owner(owner_telegram_id: int) -> Optional[Company]:
     return Company.model_validate(doc)
 
 
+async def get_companies_by_owner(owner_telegram_id: int) -> List[Company]:
+    cursor = companies_collection.find({"owner_telegram_id": owner_telegram_id})
+    companies: List[Company] = []
+    async for doc in cursor:
+        companies.append(Company.model_validate(doc))
+    return companies
+
+
 async def get_company_by_code(office_code: str) -> Optional[Company]:
     doc = await companies_collection.find_one(
         {"office_code": office_code.strip().upper()}
@@ -63,6 +71,18 @@ async def get_company_by_code(office_code: str) -> Optional[Company]:
     if not doc:
         return None
     return Company.model_validate(doc)
+
+
+async def delete_company_and_related(company_id: ObjectIdLike) -> int:
+    """
+    Delete a company and all its employees + jobs.
+    Returns number of company docs deleted (0 or 1).
+    """
+    company_oid = _to_object_id(company_id)
+    res_company = await companies_collection.delete_one({"_id": company_oid})
+    await employees_collection.delete_many({"company_id": company_oid})
+    await jobs_collection.delete_many({"company_id": company_oid})
+    return res_company.deleted_count
 
 
 # -------------------- EMPLOYEE --------------------
@@ -126,6 +146,15 @@ async def get_employee_by_telegram(
     if not doc:
         return None
     return Employee.model_validate(doc)
+
+
+async def delete_employee_by_telegram(telegram_id: int) -> int:
+    """
+    Remove an employee from whatever company they belong to.
+    (Assumes one company per Telegram user for now.)
+    """
+    res = await employees_collection.delete_many({"telegram_id": telegram_id})
+    return res.deleted_count
 
 
 # -------------------- JOB --------------------
